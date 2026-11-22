@@ -1,0 +1,22 @@
+# 指标语义层：口径唯一来源。LLM 只能选指标，不能自己写聚合表达式。
+metrics:
+  - name: sales_amount
+    label: 销售额
+    table: sales
+    time_field: month          # 月度粒度，值形如 2026-03
+    expr: SUM(amount)
+    unit: 元
+    aliases: [销售额, 成交额, 营收, GMV]
+    dimensions: [region, channel]
+    description: 统计周期内所有订单金额之和，不含退款冲销。
+
+  - name: order_count
+    label: 订单量
+    table: sales
+    time_field: month
+    expr: COUNT(*)
+    unit: 笔
+    aliases: [订单量, 单量, 交易笔数]
+    dimensions: [region, channel]
+    description: 统计周期内的订单笔数，一行代表一笔订单。
+    
