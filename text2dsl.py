@@ -14,19 +14,18 @@ from typing import Optional
 from openai import OpenAI
 from pydantic import ValidationError
 
-from dsl2sql import DSL, compile_sql
-from metricstore import MetricIndex, MetricStore
+from dsl2sql import DSL, compile_rate_sql, compile_sql
+from metric_store import MetricIndex, MetricStore
 
 BASE = "https://open.bigmodel.cn/api/paas/v4/"
 MODEL = os.getenv("GLM_MODEL", "glm-4-flash")
-KEY = os.getenv("GLM_API_KEY","2d875673d4834b3a9868ae3c0d77334a.kboCOVWGKHb99Xw0")
 _client: Optional[OpenAI] = None
 
 
 def chat(messages: list, temperature: float = 0.0) -> str:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=KEY, base_url=BASE)
+        _client = OpenAI(api_key=os.environ["GLM_API_KEY"], base_url=BASE)
     resp = _client.chat.completions.create(
         model=MODEL, messages=messages, temperature=temperature
     )
@@ -199,7 +198,11 @@ def main() -> None:
     print("\n===== DSL =====")
     print(json.dumps(dsl.model_dump(), ensure_ascii=False, indent=2))
     print("\n===== SQL =====")
-    print(compile_sql(dsl, store))
+    metric = store.get(dsl.metric) or {}
+    if metric.get("type") == "ratio":
+        print(compile_rate_sql(dsl, store))
+    else:
+        print(compile_sql(dsl, store))
 
 
 if __name__ == "__main__":

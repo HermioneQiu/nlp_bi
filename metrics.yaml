@@ -8,6 +8,7 @@ metrics:
     unit: 元
     aliases: [销售额, 成交额, 营收, GMV]
     dimensions: [region, channel]
+    type: additive          # 可加：各维度可直接求和
     description: 统计周期内所有订单金额之和，不含退款冲销。
 
   - name: order_count
@@ -18,5 +19,19 @@ metrics:
     unit: 笔
     aliases: [订单量, 单量, 交易笔数]
     dimensions: [region, channel]
+    type: additive
     description: 统计周期内的订单笔数，一行代表一笔订单。
-    
+
+  # 比率型指标：分子/分母各自可加，但比率本身不能按维度相加
+  - name: conversion_rate
+    label: 转化率
+    type: ratio
+    table: traffic
+    time_field: month
+    expr: SUM(orders) / SUM(uv)
+    numerator: SUM(orders)
+    denominator: SUM(uv)
+    unit: "%"
+    aliases: [转化率, 转化, CVR, 成交转化率]
+    dimensions: [region, channel]
+    description: 成交订单数 / 访问人数，按维度算完再用 w×r 还原整体，不能把各维度率直接相加。

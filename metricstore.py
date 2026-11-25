@@ -17,7 +17,7 @@ from openai import OpenAI
 
 BASE = "https://open.bigmodel.cn/api/paas/v4/"
 EMBED_MODEL = os.getenv("GLM_EMBED_MODEL", "embedding-3")
-KEY = os.getenv("GLM_API_KEY","2d875673d4834b3a9868ae3c0d77334a.kboCOVWGKHb99Xw0")
+
 
 class MetricStore:
     def __init__(self, path: str = "metrics.yaml"):
@@ -57,7 +57,7 @@ def doc_text(m: dict) -> str:
 
 
 def glm_embed(texts: List[str]) -> List[List[float]]:
-    client = OpenAI(api_key=KEY, base_url=BASE)
+    client = OpenAI(api_key=os.environ["GLM_API_KEY"], base_url=BASE)
     resp = client.embeddings.create(model=EMBED_MODEL, input=texts)
     return [d.embedding for d in resp.data]
 

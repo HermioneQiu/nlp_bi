@@ -41,9 +41,76 @@ def conclusion(df: pd.DataFrame, dim: str, metric_label: str, period: str) -> st
     )
 
 
+def should_drill_rate(df: pd.DataFrame, threshold: float = 0.05) -> bool:
+    """比率指标的“该不该下钻”：按整体率算相对变化，不看单维度波动。"""
+    den0, den1 = float(df["den0"].sum()), float(df["den1"].sum())
+    if den0 == 0 or den1 == 0:
+        return False
+    r0 = float(df["num0"].sum()) / den0
+    if r0 == 0:
+        return False
+    r1 = float(df["num1"].sum()) / den1
+    return abs(r1 - r0) / r0 >= threshold
+
+
+def decompose_rate(df: pd.DataFrame, dim: str):
+    """比率指标归因：rate = Σ(w_i × r_i)，拆成结构效应 + 效率效应。
+
+    - 结构效应：流量占比变化（w 变了），用基期转化率计价
+    - 效率效应：各维度自身转化率变化（r 变了），用基期占比计价
+    - 交叉项：Δw × Δr，用 Shapley 对称平分给两项，保证两项之和 = 总变化
+    返回 (明细表, 基期整体率, 本期整体率)，率都是 0~1 的小数。
+    """
+    out = df.copy()
+    den0, den1 = float(out["den0"].sum()), float(out["den1"].sum())
+    if den0 == 0 or den1 == 0:
+        raise ValueError("基期或本期访问量为 0，无法计算转化率")
+    rate0 = float(out["num0"].sum()) / den0
+    rate1 = float(out["num1"].sum()) / den1
+
+    recs = []
+    for _, r in out.iterrows():
+        w0 = float(r["den0"]) / den0
+        w1 = float(r["den1"]) / den1
+        rr0 = float(r["num0"]) / float(r["den0"]) if r["den0"] else 0.0
+        rr1 = float(r["num1"]) / float(r["den1"]) if r["den1"] else 0.0
+        dw, dr = w1 - w0, rr1 - rr0
+        struct, eff = rr0 * dw, w0 * dr
+        cross = dw * dr
+        recs.append({
+            dim: r[dim],
+            "w0": round(w0 * 100, 2), "w1": round(w1 * 100, 2),
+            "rate0": round(rr0 * 100, 2), "rate1": round(rr1 * 100, 2),
+            "struct_pp": round((struct + cross / 2) * 100, 3),
+            "eff_pp": round((eff + cross / 2) * 100, 3),
+            "total_pp": round((struct + eff + cross) * 100, 3),
+        })
+    return pd.DataFrame(recs).sort_values("total_pp").reset_index(drop=True), rate0, rate1
+
+
+def conclusion_rate(
+    detail: pd.DataFrame, rate0: float, rate1: float, dim: str, metric_label: str, period: str
+) -> str:
+    """比率指标的结论：单位是“个百分点”，并且必须分开报结构与效率。"""
+    total = (rate1 - rate0) * 100
+    struct = float(detail["struct_pp"].sum())
+    eff = float(detail["eff_pp"].sum())
+    worst_struct = detail.loc[detail["struct_pp"].abs().idxmax()]
+    worst_eff = detail.loc[detail["eff_pp"].abs().idxmax()]
+    trend = "下滑" if total < 0 else "上升"
+    return (
+        f"{period} {metric_label}从 {rate0 * 100:.2f}% {trend}到 {rate1 * 100:.2f}%，"
+        f"变动 {total:+.2f} 个百分点；结构效应 {struct:+.2f}pp、效率效应 {eff:+.2f}pp。"
+        f"结构上最大影响是「{worst_struct[dim]}」（{worst_struct['struct_pp']:+.2f}pp，"
+        f"流量占比 {worst_struct['w0']:.0f}%→{worst_struct['w1']:.0f}%），"
+        f"效率上最大影响是「{worst_eff[dim]}」（{worst_eff['eff_pp']:+.2f}pp，"
+        f"转化率 {worst_eff['rate0']:.2f}%→{worst_eff['rate1']:.2f}%）。"
+    )
+
+
 if __name__ == "__main__":
     import sqlite3
-    from metricstore import MetricStore
+    from metric_store import MetricStore
     from dsl2sql import DSL, TimeWindow, Filter, compile_sql
 
     store, conn = MetricStore(), sqlite3.connect("metric.db")
